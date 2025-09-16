@@ -19,6 +19,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "spi.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -64,6 +66,7 @@ void SystemClock_Config(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -87,8 +90,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
+  //Start PWM on TIM1 Channel 1
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -98,6 +105,33 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+	//Initializing the bit arrays before mosi/miso
+	uint8_t tx[3] = {0x01,0x80,0x00};    // tx = 128
+	uint8_t rx[3];    // rx = 0
+
+	//Set CS pin low to start communication
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_8,GPIO_PIN_RESET);
+
+	//Send/recieve bit trasnsfer from potentiometer b/c it is full duplex
+	HAL_SPI_TransmitReceive(&hspi1,tx,rx,3,1000);
+
+	//set CS pin high to stop communication
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_8,GPIO_PIN_SET);
+
+	//combine the 2 8 bit values to make the one, 10 bit number
+	uint16_t adcValue = ((rx[1] & 0x03) << 8) | rx[2];
+
+
+	//This converts the 10-bit ADC value to a PWM duty cycle value
+	//3200 = 5% duty (1ms ON)  |  6400 = 10% duty (2ms ON)
+	uint16_t ccrValue = 3200 + ((adcValue-0) * (6400 - 3200)) / (1023-0);
+
+	//Update CCR1 register to set new duty cycle on PA8
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, ccrValue);
+
+
+	HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -122,6 +156,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -177,5 +212,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
